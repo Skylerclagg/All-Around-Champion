@@ -36,6 +36,11 @@ jobs:
       - name: Build Project
         run: npm run build
 
+      - name: Debug Build Output
+        run: |
+          echo "Checking dist folder:"
+          ls -la dist || echo "dist/ does not exist!"
+
       - name: Ensure dist Folder Exists
         run: |
           if [ ! -d "dist" ]; then
@@ -49,7 +54,7 @@ jobs:
       - name: Upload Artifact for Deployment
         uses: actions/upload-pages-artifact@v3
         with:
-          path: "dist"
+          path: "${{ github.workspace }}/dist"
 
       - name: Deploy to GitHub Pages
         id: deployment
