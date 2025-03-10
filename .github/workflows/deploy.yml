@@ -6,8 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  # Allows uploading artifacts and pushing to pages
-  contents: write
+  contents: write  # allows uploading artifacts and pushing to pages
   pages: write
   id-token: write
 
@@ -15,41 +14,34 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      # 1) Check out your repository
       - name: Checkout
         uses: actions/checkout@v4
 
-      # 2) Set up Node (version 18)
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
           cache: npm
 
-      # 3) Install project dependencies
       - name: Install Dependencies
         run: npm ci
 
-      # 4) Build the project (this creates 'dist/' folder)
       - name: Build Project
         run: npm run build
 
-      # 5) (Optional) Debug: confirm 'dist/' was created
-      - name: Check dist Folder
-        run: ls -la dist || echo "dist folder not found!"
+      - name: Debug Build Output
+        run: |
+          echo "Listing dist folder:" && ls -la dist || echo "dist folder not found!"
 
-      # 6) Configure GitHub Pages (creates a default 'github-pages' environment)
-      - name: Configure Pages
+      - name: Configure GitHub Pages
         uses: actions/configure-pages@v4
 
-      # 7) Upload 'dist/' folder as artifact named 'my-pages-artifact'
       - name: Upload Artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          name: "my-pages-artifact"
-          path: "./dist"
+          name: "my-pages-artifact"      # artifact name
+          path: "./dist"                # path to built site
 
-      # 8) Deploy the artifact to GitHub Pages
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v1
