@@ -6,59 +6,52 @@ on:
   workflow_dispatch:
 
 permissions:
+  # Allows uploading artifacts and pushing to pages
   contents: write
   pages: write
   id-token: write
 
-concurrency:
-  group: "pages"
-  cancel-in-progress: true
-
 jobs:
   deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      # 1) Check out your repository
+      - name: Checkout
         uses: actions/checkout@v4
 
+      # 2) Set up Node (version 18)
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: "npm"
+          cache: npm
 
+      # 3) Install project dependencies
       - name: Install Dependencies
         run: npm ci
 
+      # 4) Build the project (this creates 'dist/' folder)
       - name: Build Project
         run: npm run build
 
-      - name: Debug Build Output
-        run: |
-          echo "Checking dist folder:"
-          ls -la dist || echo "dist/ does not exist!"
+      # 5) (Optional) Debug: confirm 'dist/' was created
+      - name: Check dist Folder
+        run: ls -la dist || echo "dist folder not found!"
 
-      - name: Ensure dist Folder Exists
-        run: |
-          if [ ! -d "dist" ]; then
-            echo "Error: dist folder not found!"
-            exit 1
-          fi
-
-      - name: Configure GitHub Pages
+      # 6) Configure GitHub Pages (creates a default 'github-pages' environment)
+      - name: Configure Pages
         uses: actions/configure-pages@v4
 
-      - name: Upload Artifact for Deployment
+      # 7) Upload 'dist/' folder as artifact named 'my-pages-artifact'
+      - name: Upload Artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          name: "github-pages"
-          path: "${{ github.workspace }}/dist"
+          name: "my-pages-artifact"
+          path: "./dist"
 
+      # 8) Deploy the artifact to GitHub Pages
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v1
         with:
-          artifact_name: "github-pages"
+          artifact_name: "my-pages-artifact"
