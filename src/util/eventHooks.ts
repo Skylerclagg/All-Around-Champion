@@ -264,10 +264,10 @@ export function useEventSkills(
 
     for (const team of teams.overall) {
       const driver =
-        skills.find((s) => s.team.id === team.id && s.type === "Driver") ??
+        skills.find((s) => s.team.id === team.id && s.type === "driver") ??
         null;
       const programming =
-        skills.find((s) => s.team.id === team.id && s.type === "Programming") ??
+        skills.find((s) => s.team.id === team.id && s.type === "programming") ??
         null;
       const overall = (driver?.score ?? 0) + (programming?.score ?? 0);
 
