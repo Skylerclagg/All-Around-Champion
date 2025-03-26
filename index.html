@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Drone Competition Eligibility Checker</title>
+  <!-- Manifest without image icons -->
+  <link rel="manifest" href="manifest.json" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      max-width: 800px;
+    }
+    h1, h2, h3 {
+      text-align: center;
+    }
+    .event-select, .sku-lookup {
+      margin-bottom: 20px;
+      padding: 10px;
+      border: 1px solid #ddd;
+    }
+    label {
+      font-weight: bold;
+    }
+    select, input[type="text"] {
+      width: 100%;
+      padding: 8px;
+      margin-top: 5px;
+      margin-bottom: 10px;
+    }
+    button {
+      padding: 8px 16px;
+    }
+    .team-list {
+      margin-top: 20px;
+    }
+    .team {
+      border: 1px solid #ddd;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    .eligible {
+      background-color: #e0ffe0;
+    }
+    .ineligible {
+      background-color: #ffe0e0;
+    }
+    .reasons {
+      margin-left: 20px;
+      color: #a00;
+    }
+  </style>
+</head>
+<body>
+  <h1>Aerial Drone Competition</h1>
+  <h2>All-Around Champion Eligibility Checker</h2>
+
+  <!-- Event Selection Section -->
+  <div class="event-select">
+    <label for="eventDropdown">Select an Event (from 1 week ago until future):</label>
+    <select id="eventDropdown">
+      <option value="">Loading events...</option>
+    </select>
+  </div>
+
+  <!-- SKU Lookup Section -->
+  <div class="sku-lookup">
+    <label for="skuInput">Or lookup an Event by SKU:</label>
+    <input type="text" id="skuInput" placeholder="Enter Event SKU" />
+    <button id="lookupBtn">Lookup Event</button>
+  </div>
+
+  <!-- Button to trigger eligibility calculation (after selecting an event) -->
+  <div style="text-align:center;">
+    <button id="calculateBtn">Calculate Eligibility</button>
+  </div>
+
+  <!-- Sections to display results -->
+  <div class="team-list">
+    <h3>Eligible Teams</h3>
+    <div id="eligibleTeams"></div>
+  </div>
+
+  <div class="team-list">
+    <h3>Ineligible Teams</h3>
+    <div id="ineligibleTeams"></div>
+  </div>
+
+  <!-- Service worker registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then(registration => {
+            console.log('ServiceWorker registration successful with scope:', registration.scope);
+          })
+          .catch(err => {
+            console.log('ServiceWorker registration failed:', err);
+          });
+      });
+    }
+  </script>
+
+  <!-- Load main.js as an ES module -->
+  <script type="module" src="main.js"></script>
+</body>
+</html>
