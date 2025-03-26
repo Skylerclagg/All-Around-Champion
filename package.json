@@ -1,0 +1,13 @@
+{
+    "name": "drone-eligibility",
+    "version": "1.0.0",
+    "scripts": {
+      "build": "npx tailwindcss -i ./styles.css -o ./dist/styles.css --minify"
+    },
+    "devDependencies": {
+      "autoprefixer": "^10.4.14",
+      "postcss": "^8.4.21",
+      "tailwindcss": "^3.3.2"
+    }
+  }
+  
