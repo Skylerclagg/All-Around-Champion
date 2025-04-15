@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Excellence Eligibility Checker</title>
+  <title>All-Around Champion Eligibility Checker</title>
   <link rel="manifest" href="manifest.json" />
   <!-- Link to the compiled Tailwind CSS file (built via Vite/Tailwind) -->
   <link rel="stylesheet" href="/dist/styles.css" />
@@ -11,8 +11,8 @@
 <body class="bg-gray-50 text-gray-800">
   <header class="bg-blue-700 text-white py-6 shadow">
     <div class="container mx-auto text-center">
-      <h1 class="text-3xl font-bold">Excellence Eligibility Checker</h1>
-      <p class="mt-2 text-lg">Determine team eligibility for the All-Around Champion Award</p>
+      <h1 class="text-3xl font-bold">All-Around Champion Eligibility Checker</h1>
+      <p class="mt-2 text-lg">Select an event to view eligibility results</p>
     </div>
   </header>
   
@@ -37,37 +37,13 @@
           </div>
         </div>
       </div>
-      
-      <!-- Eligibility Flow Selection -->
-      <div class="bg-white p-6 rounded-lg shadow border mt-6">
-         <label class="block text-lg font-semibold mb-2">Select Eligibility Flow</label>
-         <div class="flex items-center space-x-4">
-           <label class="inline-flex items-center">
-             <input type="radio" name="flow" value="ADC" class="form-radio" checked>
-             <span class="ml-2">ADC</span>
-           </label>
-           <label class="inline-flex items-center">
-             <input type="radio" name="flow" value="Excellence" class="form-radio">
-             <span class="ml-2">Excellence</span>
-           </label>
-         </div>
-         <!-- Grade selection for Excellence flow -->
-         <div id="gradeContainer" class="mt-4 hidden">
-           <label for="gradeSelect" class="block text-lg font-semibold mb-2">Select Grade</label>
-           <select id="gradeSelect" class="w-full p-3 border rounded">
-             <option value="Middle School">Middle School</option>
-             <option value="High School">High School</option>
-           </select>
-         </div>
-      </div>
-      
       <div class="text-center mt-6">
-        <button id="calculateBtn" class="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded font-semibold">Calculate Eligibility</button>
+        <button id="calculateBtn" class="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded font-semibold">Load Eligibility</button>
       </div>
     </section>
     
-    <!-- Results Section -->
-    <section class="mb-12">
+    <!-- Combined Results Section (for events with a single award) -->
+    <section id="combinedResults">
       <div class="mb-8">
         <h2 class="text-2xl font-bold mb-4">Eligible Teams</h2>
         <div id="eligibleTeams" class="space-y-4"></div>
@@ -77,24 +53,34 @@
         <div id="ineligibleTeams" class="space-y-4"></div>
       </div>
     </section>
+    
+    <!-- Split Results Section (for events with separate Middle School and High School awards) -->
+    <section id="splitResults" class="hidden">
+      <div id="middleSchoolResults" class="mb-8">
+        <h2 class="text-2xl font-bold mb-4">Middle School Eligible Teams</h2>
+        <div id="eligibleTeamsMiddle" class="space-y-4"></div>
+        <h2 class="text-2xl font-bold mb-4">Middle School Ineligible Teams</h2>
+        <div id="ineligibleTeamsMiddle" class="space-y-4"></div>
+      </div>
+      <div id="highSchoolResults">
+        <h2 class="text-2xl font-bold mb-4">High School Eligible Teams</h2>
+        <div id="eligibleTeamsHigh" class="space-y-4"></div>
+        <h2 class="text-2xl font-bold mb-4">High School Ineligible Teams</h2>
+        <div id="ineligibleTeamsHigh" class="space-y-4"></div>
+      </div>
+    </section>
   </main>
   
-  <!-- Show/hide grade dropdown based on selected flow -->
-  <script>
-    const flowRadios = document.querySelectorAll('input[name="flow"]');
-    const gradeContainer = document.getElementById('gradeContainer');
-    flowRadios.forEach(radio => {
-      radio.addEventListener('change', () => {
-        if (document.querySelector('input[name="flow"]:checked').value === "Excellence") {
-          gradeContainer.classList.remove('hidden');
-        } else {
-          gradeContainer.classList.add('hidden');
-        }
-      });
-    });
-  </script>
-  
-  <!-- Load our main JavaScript file as a module -->
+  <!-- Load main.js -->
   <script type="module" src="main.js"></script>
+  
+  <!-- Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js')
+        .then(reg => console.log('Service Worker registered:', reg.scope))
+        .catch(err => console.error('Service Worker registration failed:', err));
+    }
+  </script>
 </body>
 </html>

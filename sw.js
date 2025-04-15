@@ -1,18 +1,18 @@
-const CACHE_NAME = 'drone-eligibility-cache-v1';
+// sw.js - Basic Service Worker for Offline Caching
+
+const CACHE_NAME = 'eligibility-cache-v1';
 const urlsToCache = [
+  '/',
   '/index.html',
   '/manifest.json',
-  '/main.js',
-  '/api.js'
+  '/dist/styles.css',
+  '/main.js'
 ];
 
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('Opened cache');
-        return cache.addAll(urlsToCache);
-      })
+      .then(cache => cache.addAll(urlsToCache))
   );
 });
 
@@ -27,10 +27,9 @@ self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheName !== CACHE_NAME) {
-            console.log('Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
+        cacheNames.map(name => {
+          if (name !== CACHE_NAME) {
+            return caches.delete(name);
           }
         })
       );

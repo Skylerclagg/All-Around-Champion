@@ -1,217 +1,320 @@
-// main.js
+// main.js - Eligibility Calculation using Live Event Data
 
-// For demonstration, we use simulated data.
-// In a real implementation, you’d replace these with API calls.
-const THRESHOLD_ADC = 0.5;        // 50% cutoff for ADC
-const THRESHOLD_EXCELLENCE = 0.4;   // 40% cutoff for Excellence
+import { fetchEvents, fetchEventData, fetchAwards } from './api.js';
 
-// Simulated team data (each team has id, number, team_name, grade, etc.)
-const teams = [
-  { id: 1, number: "101", team_name: "Sky High Flyers", grade: "High School" },
-  { id: 2, number: "202", team_name: "Aero Wizards", grade: "High School" },
-  { id: 3, number: "303", team_name: "Drone Dynamos", grade: "Middle School" },
-  // ... add more teams as needed
-];
-
-// Simulated qualifier rankings for the event (combined for ADC & Excellence)
-const qualifierRankings = [
-  { team: { id: 1 }, rank: 1 },
-  { team: { id: 2 }, rank: 2 },
-  { team: { id: 3 }, rank: 3 },
-  // ... add more rankings
-];
-
-// Simulated skills rankings (assumed same data for both flows)
-// Each object contains team, rank, programming_score, programming_attempts, driver_score, driver_attempts.
-const skillsRankings = [
-  { team: { id: 1 }, rank: 2, programming_score: 85, programming_attempts: 3, driver_score: 70, driver_attempts: 2 },
-  { team: { id: 2 }, rank: 1, programming_score: 90, programming_attempts: 4, driver_score: 0, driver_attempts: 3 }, // ineligible: no driver score
-  { team: { id: 3 }, rank: 3, programming_score: 0, programming_attempts: 0, driver_score: 65, driver_attempts: 2 },   // ineligible: no programming score
-  // ... add more skills data
-];
-
-// Simulated autonomous skills rankings for ADC (for demonstration)
-const autoSkillsRankings = [
-  { team: { id: 1 }, rank: 1 },
-  { team: { id: 2 }, rank: 3 },
-  { team: { id: 3 }, rank: 2 },
-  // ... add more if needed
-];
-
-// Compute precomputed values for a team based on the rankings.
-function computePrecomputedValues(team, flow) {
-  // Qualifier values
-  let qualifierObj = qualifierRankings.find(r => r.team.id === team.id);
-  let qualifierRank = qualifierObj ? qualifierObj.rank : -1;
-  let qualifierCutoff = Math.max(1, Math.round(qualifierRankings.length * (flow === "ADC" ? THRESHOLD_ADC : THRESHOLD_EXCELLENCE)));
-  
-  // Overall skills ranking values
-  let skillsObj = skillsRankings.find(r => r.team.id === team.id);
-  let skillsRank = skillsObj ? skillsObj.rank : -1;
-  let skillsCutoff = qualifierCutoff; // For our purposes, use the same cutoff
-  
-  // For ADC, also compute autonomous skills ranking.
-  let autoSkillsObj = autoSkillsRankings.find(r => r.team.id === team.id);
-  let autoSkillsRank = autoSkillsObj ? autoSkillsObj.rank : -1;
-  let autoSkillsCutoff = Math.max(1, Math.round(qualifierRankings.length * THRESHOLD_ADC));
-  
-  // Skills data
-  let skillsData = skillsObj ? {
-      programming_score: skillsObj.programming_score,
-      programming_attempts: skillsObj.programming_attempts,
-      driver_score: skillsObj.driver_score,
-      driver_attempts: skillsObj.driver_attempts
-  } : { programming_score: 0, programming_attempts: 0, driver_score: 0, driver_attempts: 0 };
-  
-  return { qualifierRank, qualifierCutoff, skillsRank, skillsCutoff, autoSkillsRank, autoSkillsCutoff, skillsData };
+// ---------- Utility Functions ----------
+function computeCutoff(totalCount, threshold) {
+  return Math.max(1, Math.round(totalCount * threshold));
 }
 
-// ADC Eligibility Calculation
-function calculateADCEligibility() {
-    // Use the number of teams in the qualifier rankings as the basis for the cutoff.
-    const totalQualifiers = qualifierRankings.length;
-    const qualifierCutoff = Math.max(1, Math.ceil(totalQualifiers * 0.5));
-    const skillsCutoff = qualifierCutoff; // Use the same cutoff for skills rankings
-  
-    const eligible = [];
-    const ineligible = [];
-  
-    // Iterate over the teams that appear in the qualifier rankings.
-    qualifierRankings.forEach(qRankObj => {
-      const team = qRankObj.team;
-      const reasons = [];
-  
-      const qualifierRank = qRankObj.rank;
-      // Look up the corresponding skills ranking for the team.
-      const skillsObj = skillsRankings.find(s => s.team.id === team.id);
-      const skillsRank = skillsObj ? skillsObj.rank : -1;
-  
-      // Check qualifier ranking: team must be within the cutoff.
-      if (qualifierRank > qualifierCutoff) {
-        reasons.push(`Qualifier Ranking: ${qualifierRank} (cutoff: ${qualifierCutoff})`);
-      }
-      // Check skills ranking: team must be ranked and within the cutoff.
-      if (skillsRank === -1 || skillsRank > skillsCutoff) {
-        reasons.push(
-          skillsRank === -1
-            ? "Not ranked in skills matches."
-            : `Skills Ranking: ${skillsRank} (cutoff: ${skillsCutoff})`
-        );
-      }
-      // Check mission scores: require a score greater than 0 in both missions.
-      if (!skillsObj || skillsObj.programming_score <= 0) {
-        reasons.push("No autonomous flight (programming) score.");
-      }
-      if (!skillsObj || skillsObj.driver_score <= 0) {
-        reasons.push("No piloting (driver) score.");
-      }
-  
-      if (reasons.length === 0) {
-        eligible.push({
-          team,
-          qualifierRank,
-          qualifierCutoff,
-          skillsRank,
-          skillsCutoff,
-          skillsData: skillsObj
-        });
-      } else {
-        ineligible.push({
-          team,
-          qualifierRank,
-          qualifierCutoff,
-          skillsRank,
-          skillsCutoff,
-          skillsData: skillsObj,
-          reasons
-        });
+function getTeamRank(teamId, sortedRankings) {
+  const index = sortedRankings.findIndex(r => r.team.id === teamId);
+  return index >= 0 ? index + 1 : -1;
+}
+
+function getSkillsData(teamId, skillsArray) {
+  const ranking = skillsArray.find(r => r.team.id === teamId);
+  if (ranking) {
+    return {
+      programming: ranking.programming_score,
+      programming_attempts: ranking.programming_attempts,
+      driver: ranking.driver_score,
+      driver_attempts: ranking.driver_attempts
+    };
+  }
+  return { programming: 0, programming_attempts: 0, driver: 0, driver_attempts: 0 };
+}
+
+function PrecomputedValues(qualifierRank, qualifierCutoff, skillsRank, skillsCutoff, skillsData) {
+  this.qualifierRank = qualifierRank;
+  this.qualifierCutoff = qualifierCutoff;
+  this.skillsRank = skillsRank;
+  this.skillsCutoff = skillsCutoff;
+  this.skillsData = skillsData;
+}
+
+// ---------- Eligibility Calculation Functions ----------
+
+function calculateCombinedEligibility(team, qualifierRankings, skillsRankings, autoSkillsRankings, threshold = 0.4) {
+  const sortedQualifier = qualifierRankings.slice().sort((a, b) => a.rank - b.rank);
+  const sortedSkills = skillsRankings.slice().sort((a, b) => a.rank - b.rank);
+  const sortedAutoSkills = autoSkillsRankings.slice().sort((a, b) => a.rank - b.rank);
+
+  const qualifierCutoff = computeCutoff(sortedQualifier.length, threshold);
+  const skillsCutoff = computeCutoff(sortedSkills.length, threshold);
+  const autoSkillsCutoff = computeCutoff(sortedAutoSkills.length, threshold);
+
+  const isInQualifierCutoff = sortedQualifier.slice(0, qualifierCutoff).some(r => r.team.id === team.id);
+  const qualifierRank = getTeamRank(team.id, sortedQualifier);
+  const skillsRank = getTeamRank(team.id, sortedSkills);
+  const autoSkillsRank = getTeamRank(team.id, sortedAutoSkills);
+
+  const skillsData = getSkillsData(team.id, skillsRankings);
+
+  let eligible = true;
+  let reasons = [];
+
+  if (!isInQualifierCutoff) {
+    eligible = false;
+    reasons.push(`Qualifier Rank: ${qualifierRank > 0 ? qualifierRank : "Not ranked"} (cutoff: ${qualifierCutoff})`);
+  }
+  if (skillsData.programming <= 0) {
+    eligible = false;
+    reasons.push("No programming score or attempts");
+  }
+  if (skillsData.driver <= 0) {
+    eligible = false;
+    reasons.push("No driver score");
+  }
+  if (skillsRank < 0 || skillsRank > skillsCutoff) {
+    eligible = false;
+    reasons.push(`Skills Rank: ${skillsRank > 0 ? skillsRank : "Not ranked"} (cutoff: ${skillsCutoff})`);
+  }
+  if (autoSkillsRank < 0 || autoSkillsRank > autoSkillsCutoff) {
+    eligible = false;
+    reasons.push(`Autonomous Skills Rank: ${autoSkillsRank > 0 ? autoSkillsRank : "Not ranked"} (cutoff: ${autoSkillsCutoff})`);
+  }
+
+  const precomputed = new PrecomputedValues(qualifierRank, qualifierCutoff, skillsRank, skillsCutoff, skillsData);
+  return { eligible, reasons, precomputed };
+}
+
+function calculateSplitEligibility(team, qualifierRankings, skillsRankings, gradeFilter, threshold = 0.5) {
+  // Filter rankings to include only teams with grade equal to gradeFilter.
+  const filteredQualifier = qualifierRankings.filter(r => r.team.grade === gradeFilter);
+  const filteredSkills = skillsRankings.filter(r => r.team.grade === gradeFilter);
+
+  const qualifierCutoff = computeCutoff(filteredQualifier.length, threshold);
+  const skillsCutoff = qualifierCutoff; 
+
+  const sortedQualifier = filteredQualifier.slice().sort((a, b) => a.rank - b.rank);
+  const sortedSkills = filteredSkills.slice().sort((a, b) => a.rank - b.rank);
+
+  const isInQualifierCutoff = sortedQualifier.slice(0, qualifierCutoff).some(r => r.team.id === team.id);
+  const qualifierRank = getTeamRank(team.id, sortedQualifier);
+  const skillsRank = getTeamRank(team.id, sortedSkills);
+  const skillsData = getSkillsData(team.id, skillsRankings);
+
+  let eligible = true;
+  let reasons = [];
+  if (!isInQualifierCutoff) {
+    eligible = false;
+    reasons.push(`Qualifier Rank: ${qualifierRank > 0 ? qualifierRank : "Not ranked"} (cutoff: ${qualifierCutoff})`);
+  }
+  if (skillsData.programming <= 0) {
+    eligible = false;
+    reasons.push("No programming score or attempts");
+  }
+  if (skillsData.driver <= 0) {
+    eligible = false;
+    reasons.push("No driver score");
+  }
+  if (skillsRank < 0 || skillsRank > skillsCutoff) {
+    eligible = false;
+    reasons.push(`Skills Rank: ${skillsRank > 0 ? skillsRank : "Not ranked"} (cutoff: ${skillsCutoff})`);
+  }
+  const precomputed = new PrecomputedValues(qualifierRank, qualifierCutoff, skillsRank, skillsCutoff, skillsData);
+  return { eligible, reasons, precomputed };
+}
+
+// ---------- Event Handling & Data Loading ----------
+
+// Populate event dropdown on page load.
+async function loadEvents() {
+  try {
+    const events = await fetchEvents();
+    const eventDropdown = document.getElementById('eventDropdown');
+    eventDropdown.innerHTML = '';
+    events.forEach(event => {
+      const option = document.createElement('option');
+      option.value = event.id;
+      option.textContent = `${event.name} (SKU: ${event.sku})`;
+      eventDropdown.appendChild(option);
+    });
+  } catch (error) {
+    console.error("Error loading events:", error);
+  }
+}
+
+// SKU lookup: allow user to search for an event by SKU.
+async function lookupEventBySKU(sku) {
+  try {
+    const url = `https://www.robotevents.com/api/v2/events?sku[]=${encodeURIComponent(sku)}`;
+    const response = await fetch(url, {
+      headers: {
+        "Authorization": `Bearer YOUR_API_TOKEN_HERE`,
+        "Content-Type": "application/json"
       }
     });
-  
-    return { eligible, ineligible };
+    if (!response.ok) {
+      throw new Error("Error looking up event by SKU");
+    }
+    const data = await response.json();
+    return data.data;
+  } catch (error) {
+    console.error("Error during SKU lookup:", error);
+    return [];
   }
-  
+}
 
-// Excellence Eligibility Calculation (split by grade)
-function calculateExcellenceEligibility(gradeCategory) {
-  // Filter teams by the selected grade.
-  const teamsForGrade = teams.filter(team => team.grade.toLowerCase() === gradeCategory.toLowerCase());
-  const eligible = [];
-  const ineligible = [];
-  
-  teamsForGrade.forEach(team => {
-    const pre = computePrecomputedValues(team, "Excellence");
-    const reasons = [];
-    // Check qualifier ranking against the cutoff
-    if (pre.qualifierRank === -1 || pre.qualifierRank > pre.qualifierCutoff) {
-      reasons.push(pre.qualifierRank === -1 ? "Not ranked in qualifier matches." : `Qualifier Ranking: ${pre.qualifierRank} (cutoff: ${pre.qualifierCutoff})`);
-    }
-    // Check skills ranking
-    if (pre.skillsRank === -1 || pre.skillsRank > pre.skillsCutoff) {
-      reasons.push(pre.skillsRank === -1 ? "Not ranked in skills matches." : `Skills Ranking: ${pre.skillsRank} (cutoff: ${pre.skillsCutoff})`);
-    }
-    // Check scores for excellence eligibility
-    if (pre.skillsData.programming_score <= 0 || pre.skillsData.programming_attempts === 0) {
-      reasons.push("Insufficient programming score/attempts.");
-    }
-    if (pre.skillsData.driver_score <= 0) {
-      reasons.push("No driver score.");
+// Main function to perform eligibility calculation for the selected event.
+async function performEligibilityCalculation(eventId) {
+  try {
+    // For simplicity, assume a default division ID (e.g., 1). In a full app, choose the division based on event details.
+    const divisionId = 1;
+    
+    // Fetch event data (teams, qualifier rankings, skills rankings).
+    const eventData = await fetchEventData(eventId, divisionId);
+    // Fetch awards for the event.
+    const awards = await fetchAwards(eventId);
+    // Filter awards to those with "All-Around Champion" in the title.
+    const allAroundAwards = awards.filter(a => a.title.includes("All-Around Champion"));
+    // Determine eligibility mode: if more than one award exists, assume split (grade-specific); otherwise, combined.
+    const isSplitMode = allAroundAwards.length > 1;
+    
+    // Prepare auto skills rankings from skills data.
+    const autoSkillsRankings = eventData.skillsRankings
+      .filter(r => r.programming_score > 0)
+      .map((r, index) => ({ ...r, rank: index + 1 }));
+    
+    if (!isSplitMode) {
+      // Combined mode: process all teams.
+      let eligibleResults = [];
+      let ineligibleResults = [];
+      
+      eventData.teams.forEach(team => {
+        const result = calculateCombinedEligibility(team, eventData.qualifierRankings, eventData.skillsRankings, autoSkillsRankings, 0.4);
+        if (result.eligible) {
+          eligibleResults.push({ team, precomputed: result.precomputed });
+        } else {
+          ineligibleResults.push({ team, reasons: result.reasons, precomputed: result.precomputed });
+        }
+      });
+      
+      // Show combined results; hide split results.
+      document.getElementById('combinedResults').classList.remove('hidden');
+      document.getElementById('splitResults').classList.add('hidden');
+      
+      const eligibleContainer = document.getElementById('eligibleTeams');
+      const ineligibleContainer = document.getElementById('ineligibleTeams');
+      eligibleContainer.innerHTML = '';
+      ineligibleContainer.innerHTML = '';
+      
+      eligibleResults.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'p-4 border rounded shadow';
+        div.textContent = `${item.team.number} - ${item.team.team_name} is eligible (Qualifier Rank: ${item.precomputed.qualifierRank}/${item.precomputed.qualifierCutoff}, Skills Rank: ${item.precomputed.skillsRank}/${item.precomputed.skillsCutoff})`;
+        eligibleContainer.appendChild(div);
+      });
+      
+      ineligibleResults.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'p-4 border rounded shadow';
+        div.innerHTML = `<strong>${item.team.number} - ${item.team.team_name} is NOT eligible</strong><br>${item.reasons.join('<br>')}`;
+        ineligibleContainer.appendChild(div);
+      });
+      
+    } else {
+      // Split mode: separate listings for Middle School and High School.
+      let eligibleMiddle = [], ineligibleMiddle = [];
+      let eligibleHigh = [], ineligibleHigh = [];
+      
+      eventData.teams.forEach(team => {
+        // Determine grade category: if team.grade is "Middle School", then it's Middle School; otherwise, treat as High School.
+        const gradeCategory = team.grade === "Middle School" ? "Middle School" : "High School";
+        const result = calculateSplitEligibility(team, eventData.qualifierRankings, eventData.skillsRankings, gradeCategory, 0.5);
+        if (gradeCategory === "Middle School") {
+          if (result.eligible) {
+            eligibleMiddle.push({ team, precomputed: result.precomputed });
+          } else {
+            ineligibleMiddle.push({ team, reasons: result.reasons, precomputed: result.precomputed });
+          }
+        } else {
+          if (result.eligible) {
+            eligibleHigh.push({ team, precomputed: result.precomputed });
+          } else {
+            ineligibleHigh.push({ team, reasons: result.reasons, precomputed: result.precomputed });
+          }
+        }
+      });
+      
+      // Show split results; hide combined results.
+      document.getElementById('combinedResults').classList.add('hidden');
+      document.getElementById('splitResults').classList.remove('hidden');
+      
+      // Middle School Results
+      const eligibleMiddleContainer = document.getElementById('eligibleTeamsMiddle');
+      const ineligibleMiddleContainer = document.getElementById('ineligibleTeamsMiddle');
+      eligibleMiddleContainer.innerHTML = '';
+      ineligibleMiddleContainer.innerHTML = '';
+      
+      eligibleMiddle.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'p-4 border rounded shadow';
+        div.textContent = `${item.team.number} - ${item.team.team_name} is eligible (Qualifier Rank: ${item.precomputed.qualifierRank}/${item.precomputed.qualifierCutoff}, Skills Rank: ${item.precomputed.skillsRank}/${item.precomputed.skillsCutoff})`;
+        eligibleMiddleContainer.appendChild(div);
+      });
+      
+      ineligibleMiddle.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'p-4 border rounded shadow';
+        div.innerHTML = `<strong>${item.team.number} - ${item.team.team_name} is NOT eligible</strong><br>${item.reasons.join('<br>')}`;
+        ineligibleMiddleContainer.appendChild(div);
+      });
+      
+      // High School Results
+      const eligibleHighContainer = document.getElementById('eligibleTeamsHigh');
+      const ineligibleHighContainer = document.getElementById('ineligibleTeamsHigh');
+      eligibleHighContainer.innerHTML = '';
+      ineligibleHighContainer.innerHTML = '';
+      
+      eligibleHigh.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'p-4 border rounded shadow';
+        div.textContent = `${item.team.number} - ${item.team.team_name} is eligible (Qualifier Rank: ${item.precomputed.qualifierRank}/${item.precomputed.qualifierCutoff}, Skills Rank: ${item.precomputed.skillsRank}/${item.precomputed.skillsCutoff})`;
+        eligibleHighContainer.appendChild(div);
+      });
+      
+      ineligibleHigh.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'p-4 border rounded shadow';
+        div.innerHTML = `<strong>${item.team.number} - ${item.team.team_name} is NOT eligible</strong><br>${item.reasons.join('<br>')}`;
+        ineligibleHighContainer.appendChild(div);
+      });
     }
     
-    if (reasons.length === 0) {
-      eligible.push({ team, pre });
-    } else {
-      ineligible.push({ team, pre, reasons });
-    }
-  });
-  return { eligible, ineligible };
-}
-
-// Display the results in the page.
-function displayResults(result, flow) {
-  const eligibleContainer = document.getElementById('eligibleTeams');
-  const ineligibleContainer = document.getElementById('ineligibleTeams');
-  eligibleContainer.innerHTML = "";
-  ineligibleContainer.innerHTML = "";
-  
-  result.eligible.forEach(item => {
-    const div = document.createElement('div');
-    div.className = "p-4 bg-green-100 border border-green-300 rounded shadow";
-    div.innerHTML = `<strong>${item.team.number} - ${item.team.team_name}</strong><br>
-      Qualifier: ${item.pre.qualifierRank}/${item.pre.qualifierCutoff}<br>
-      Skills: ${item.pre.skillsRank}/${item.pre.skillsCutoff}<br>
-      ${flow === 'ADC' ? `Autonomous: ${item.pre.autoSkillsRank}/${item.pre.autoSkillsCutoff}<br>` : ""}
-      Programming: ${item.pre.skillsData.programming_score} (Attempts: ${item.pre.skillsData.programming_attempts})<br>
-      Driver: ${item.pre.skillsData.driver_score} (Attempts: ${item.pre.skillsData.driver_attempts})`;
-    eligibleContainer.appendChild(div);
-  });
-  
-  result.ineligible.forEach(item => {
-    const div = document.createElement('div');
-    div.className = "p-4 bg-red-100 border border-red-300 rounded shadow";
-    let reasonsHtml = "<ul class='ml-4 text-red-700'>";
-    item.reasons.forEach(reason => { reasonsHtml += `<li>${reason}</li>`; });
-    reasonsHtml += "</ul>";
-    div.innerHTML = `<strong>${item.team.number} - ${item.team.team_name}</strong><br>
-      Qualifier: ${item.pre.qualifierRank === -1 ? "Not ranked" : item.pre.qualifierRank} (cutoff: ${item.pre.qualifierCutoff})<br>
-      Skills: ${item.pre.skillsRank === -1 ? "Not ranked" : item.pre.skillsRank} (cutoff: ${item.pre.skillsCutoff})<br>
-      ${flow === 'ADC' ? `Autonomous: ${item.pre.autoSkillsRank === -1 ? "Not ranked" : item.pre.autoSkillsRank} (cutoff: ${item.pre.autoSkillsCutoff})<br>` : ""}
-      ${reasonsHtml}`;
-    ineligibleContainer.appendChild(div);
-  });
-}
-
-// Event listener for the Calculate Eligibility button.
-document.getElementById('calculateBtn').addEventListener('click', () => {
-  // Determine which flow is selected.
-  const flow = document.querySelector('input[name="flow"]:checked').value; // "ADC" or "Excellence"
-  let result;
-  if (flow === "ADC") {
-    result = calculateADCEligibility();
-    displayResults(result, "ADC");
-  } else if (flow === "Excellence") {
-    const gradeCategory = document.getElementById('gradeSelect').value; // e.g., "Middle School" or "High School"
-    result = calculateExcellenceEligibility(gradeCategory);
-    displayResults(result, "Excellence");
+  } catch (error) {
+    console.error("Error performing eligibility calculation:", error);
   }
+}
+
+// ---------- Event Listeners ----------
+loadEvents();
+
+document.getElementById('lookupBtn').addEventListener('click', async () => {
+  const sku = document.getElementById('skuInput').value.trim();
+  if (!sku) return;
+  try {
+    const events = await lookupEventBySKU(sku);
+    const eventDropdown = document.getElementById('eventDropdown');
+    eventDropdown.innerHTML = '';
+    events.forEach(event => {
+      const option = document.createElement('option');
+      option.value = event.id;
+      option.textContent = `${event.name} (SKU: ${event.sku})`;
+      eventDropdown.appendChild(option);
+    });
+  } catch (error) {
+    console.error("Error during SKU lookup:", error);
+  }
+});
+
+document.getElementById('calculateBtn').addEventListener('click', () => {
+  const eventDropdown = document.getElementById('eventDropdown');
+  const selectedEventId = eventDropdown.value;
+  if (!selectedEventId) {
+    alert("Please select an event.");
+    return;
+  }
+  performEligibilityCalculation(selectedEventId);
 });
