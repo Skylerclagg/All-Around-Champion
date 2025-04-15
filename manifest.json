@@ -1,9 +1,9 @@
 {
-  "name": "Drone Competition Eligibility Checker",
-  "short_name": "Drone Eligibility",
+  "name": "Excellence Eligibility Checker",
+  "short_name": "Eligibility",
   "start_url": "/index.html",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#317EFB",
-  "description": "Calculate eligibility for the All-Around Champion Award in the Aerial Drone Competition."
+  "description": "Determine team eligibility for the All-Around Champion Award in the Aerial Drone Competition."
 }
