@@ -17,32 +17,47 @@ async function apiGet(url) {
   return await response.json();
 }
 
+/**
+ * Fetch events. For testing, we remove filtering by date.
+ * The API returns an object with "meta" and "data", so we return data.data.
+ */
 export async function fetchEvents() {
-  // For example, filter events starting from one week ago.
-  const startDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const url = `${BASE_URL}/events?start=${encodeURIComponent(startDate)}`;
+  const url = `${BASE_URL}/events`;
+  console.log("Fetching events from:", url);
   const response = await apiGet(url);
-  return response.data;
+  console.log("Events response:", response);
+  // Return the array of event objects
+  return response.data.data;
 }
 
+/**
+ * Fetches data for a specific event and division.
+ * Returns an object with:
+ *   - teams: array from /events/{id}/teams,
+ *   - qualifierRankings: array from /events/{id}/divisions/{div}/rankings,
+ *   - skillsRankings: array from /events/{id}/skills.
+ */
 export async function fetchEventData(eventId, divisionId) {
   const teamsUrl = `${BASE_URL}/events/${eventId}/teams`;
   const teamsResponse = await apiGet(teamsUrl);
-  const teams = teamsResponse.data;
+  const teams = teamsResponse.data.data;
 
   const rankingsUrl = `${BASE_URL}/events/${eventId}/divisions/${divisionId}/rankings`;
   const rankingsResponse = await apiGet(rankingsUrl);
-  const qualifierRankings = rankingsResponse.data;
+  const qualifierRankings = rankingsResponse.data.data;
 
   const skillsUrl = `${BASE_URL}/events/${eventId}/skills`;
   const skillsResponse = await apiGet(skillsUrl);
-  const skillsRankings = skillsResponse.data;
+  const skillsRankings = skillsResponse.data.data;
 
   return { teams, qualifierRankings, skillsRankings };
 }
 
+/**
+ * Fetches awards for a specific event.
+ */
 export async function fetchAwards(eventId) {
   const url = `${BASE_URL}/events/${eventId}/awards`;
   const response = await apiGet(url);
-  return response.data;
+  return response.data.data;
 }

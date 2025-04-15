@@ -1,4 +1,4 @@
-// main.js - Eligibility Calculation using Live Event Data
+// main.js - Updated Eligibility Calculation using Live Event Data
 
 import { fetchEvents, fetchEventData, fetchAwards } from './api.js';
 
@@ -34,7 +34,6 @@ function PrecomputedValues(qualifierRank, qualifierCutoff, skillsRank, skillsCut
 }
 
 // ---------- Eligibility Calculation Functions ----------
-
 function calculateCombinedEligibility(team, qualifierRankings, skillsRankings, autoSkillsRankings, threshold = 0.4) {
   const sortedQualifier = qualifierRankings.slice().sort((a, b) => a.rank - b.rank);
   const sortedSkills = skillsRankings.slice().sort((a, b) => a.rank - b.rank);
@@ -80,13 +79,12 @@ function calculateCombinedEligibility(team, qualifierRankings, skillsRankings, a
 }
 
 function calculateSplitEligibility(team, qualifierRankings, skillsRankings, gradeFilter, threshold = 0.5) {
-  // Filter rankings to include only teams with grade equal to gradeFilter.
+  // Filter rankings to teams matching gradeFilter.
   const filteredQualifier = qualifierRankings.filter(r => r.team.grade === gradeFilter);
   const filteredSkills = skillsRankings.filter(r => r.team.grade === gradeFilter);
 
   const qualifierCutoff = computeCutoff(filteredQualifier.length, threshold);
   const skillsCutoff = qualifierCutoff; 
-
   const sortedQualifier = filteredQualifier.slice().sort((a, b) => a.rank - b.rank);
   const sortedSkills = filteredSkills.slice().sort((a, b) => a.rank - b.rank);
 
@@ -119,12 +117,19 @@ function calculateSplitEligibility(team, qualifierRankings, skillsRankings, grad
 
 // ---------- Event Handling & Data Loading ----------
 
-// Populate event dropdown on page load.
 async function loadEvents() {
   try {
     const events = await fetchEvents();
+    console.log("Loaded events:", events);
     const eventDropdown = document.getElementById('eventDropdown');
     eventDropdown.innerHTML = '';
+    if (events.length === 0) {
+      const option = document.createElement('option');
+      option.value = "";
+      option.textContent = "No events available";
+      eventDropdown.appendChild(option);
+      return;
+    }
     events.forEach(event => {
       const option = document.createElement('option');
       option.value = event.id;
@@ -136,10 +141,10 @@ async function loadEvents() {
   }
 }
 
-// SKU lookup: allow user to search for an event by SKU.
 async function lookupEventBySKU(sku) {
   try {
-    const url = `https://www.robotevents.com/api/v2/events?sku[]=${encodeURIComponent(sku)}`;
+    const url = `${BASE_URL}/events?sku[]=${encodeURIComponent(sku)}`;
+    console.log("Looking up event by SKU using URL:", url);
     const response = await fetch(url, {
       headers: {
         "Authorization": `Bearer YOUR_API_TOKEN_HERE`,
@@ -150,38 +155,38 @@ async function lookupEventBySKU(sku) {
       throw new Error("Error looking up event by SKU");
     }
     const data = await response.json();
-    return data.data;
+    console.log("SKU lookup response:", data);
+    return data.data.data; // Extract the events array from the paginated response
   } catch (error) {
     console.error("Error during SKU lookup:", error);
     return [];
   }
 }
 
-// Main function to perform eligibility calculation for the selected event.
 async function performEligibilityCalculation(eventId) {
   try {
-    // For simplicity, assume a default division ID (e.g., 1). In a full app, choose the division based on event details.
+    // For this example, assume a default division ID of 1.
     const divisionId = 1;
-    
-    // Fetch event data (teams, qualifier rankings, skills rankings).
+
+    // Fetch event data and awards.
     const eventData = await fetchEventData(eventId, divisionId);
-    // Fetch awards for the event.
     const awards = await fetchAwards(eventId);
+    console.log("Fetched awards:", awards);
+
     // Filter awards to those with "All-Around Champion" in the title.
     const allAroundAwards = awards.filter(a => a.title.includes("All-Around Champion"));
-    // Determine eligibility mode: if more than one award exists, assume split (grade-specific); otherwise, combined.
     const isSplitMode = allAroundAwards.length > 1;
-    
-    // Prepare auto skills rankings from skills data.
+    console.log("Is split mode?", isSplitMode);
+
+    // Prepare auto skills rankings.
     const autoSkillsRankings = eventData.skillsRankings
       .filter(r => r.programming_score > 0)
       .map((r, index) => ({ ...r, rank: index + 1 }));
-    
+
     if (!isSplitMode) {
-      // Combined mode: process all teams.
       let eligibleResults = [];
       let ineligibleResults = [];
-      
+
       eventData.teams.forEach(team => {
         const result = calculateCombinedEligibility(team, eventData.qualifierRankings, eventData.skillsRankings, autoSkillsRankings, 0.4);
         if (result.eligible) {
@@ -190,37 +195,36 @@ async function performEligibilityCalculation(eventId) {
           ineligibleResults.push({ team, reasons: result.reasons, precomputed: result.precomputed });
         }
       });
-      
+
       // Show combined results; hide split results.
       document.getElementById('combinedResults').classList.remove('hidden');
       document.getElementById('splitResults').classList.add('hidden');
-      
+
       const eligibleContainer = document.getElementById('eligibleTeams');
       const ineligibleContainer = document.getElementById('ineligibleTeams');
       eligibleContainer.innerHTML = '';
       ineligibleContainer.innerHTML = '';
-      
+
       eligibleResults.forEach(item => {
         const div = document.createElement('div');
         div.className = 'p-4 border rounded shadow';
         div.textContent = `${item.team.number} - ${item.team.team_name} is eligible (Qualifier Rank: ${item.precomputed.qualifierRank}/${item.precomputed.qualifierCutoff}, Skills Rank: ${item.precomputed.skillsRank}/${item.precomputed.skillsCutoff})`;
         eligibleContainer.appendChild(div);
       });
-      
+
       ineligibleResults.forEach(item => {
         const div = document.createElement('div');
         div.className = 'p-4 border rounded shadow';
         div.innerHTML = `<strong>${item.team.number} - ${item.team.team_name} is NOT eligible</strong><br>${item.reasons.join('<br>')}`;
         ineligibleContainer.appendChild(div);
       });
-      
+
     } else {
-      // Split mode: separate listings for Middle School and High School.
+      // Split mode: Separate results for Middle School and High School.
       let eligibleMiddle = [], ineligibleMiddle = [];
       let eligibleHigh = [], ineligibleHigh = [];
-      
+
       eventData.teams.forEach(team => {
-        // Determine grade category: if team.grade is "Middle School", then it's Middle School; otherwise, treat as High School.
         const gradeCategory = team.grade === "Middle School" ? "Middle School" : "High School";
         const result = calculateSplitEligibility(team, eventData.qualifierRankings, eventData.skillsRankings, gradeCategory, 0.5);
         if (gradeCategory === "Middle School") {
@@ -237,44 +241,38 @@ async function performEligibilityCalculation(eventId) {
           }
         }
       });
-      
+
       // Show split results; hide combined results.
       document.getElementById('combinedResults').classList.add('hidden');
       document.getElementById('splitResults').classList.remove('hidden');
-      
-      // Middle School Results
+
       const eligibleMiddleContainer = document.getElementById('eligibleTeamsMiddle');
       const ineligibleMiddleContainer = document.getElementById('ineligibleTeamsMiddle');
       eligibleMiddleContainer.innerHTML = '';
       ineligibleMiddleContainer.innerHTML = '';
-      
       eligibleMiddle.forEach(item => {
         const div = document.createElement('div');
         div.className = 'p-4 border rounded shadow';
         div.textContent = `${item.team.number} - ${item.team.team_name} is eligible (Qualifier Rank: ${item.precomputed.qualifierRank}/${item.precomputed.qualifierCutoff}, Skills Rank: ${item.precomputed.skillsRank}/${item.precomputed.skillsCutoff})`;
         eligibleMiddleContainer.appendChild(div);
       });
-      
       ineligibleMiddle.forEach(item => {
         const div = document.createElement('div');
         div.className = 'p-4 border rounded shadow';
         div.innerHTML = `<strong>${item.team.number} - ${item.team.team_name} is NOT eligible</strong><br>${item.reasons.join('<br>')}`;
         ineligibleMiddleContainer.appendChild(div);
       });
-      
-      // High School Results
+
       const eligibleHighContainer = document.getElementById('eligibleTeamsHigh');
       const ineligibleHighContainer = document.getElementById('ineligibleTeamsHigh');
       eligibleHighContainer.innerHTML = '';
       ineligibleHighContainer.innerHTML = '';
-      
       eligibleHigh.forEach(item => {
         const div = document.createElement('div');
         div.className = 'p-4 border rounded shadow';
         div.textContent = `${item.team.number} - ${item.team.team_name} is eligible (Qualifier Rank: ${item.precomputed.qualifierRank}/${item.precomputed.qualifierCutoff}, Skills Rank: ${item.precomputed.skillsRank}/${item.precomputed.skillsCutoff})`;
         eligibleHighContainer.appendChild(div);
       });
-      
       ineligibleHigh.forEach(item => {
         const div = document.createElement('div');
         div.className = 'p-4 border rounded shadow';
@@ -282,11 +280,14 @@ async function performEligibilityCalculation(eventId) {
         ineligibleHighContainer.appendChild(div);
       });
     }
-    
+
   } catch (error) {
     console.error("Error performing eligibility calculation:", error);
   }
 }
+
+// ---------- Global Variables ----------
+const BASE_URL = "https://www.robotevents.com/api/v2";
 
 // ---------- Event Listeners ----------
 loadEvents();
@@ -296,6 +297,7 @@ document.getElementById('lookupBtn').addEventListener('click', async () => {
   if (!sku) return;
   try {
     const events = await lookupEventBySKU(sku);
+    console.log("SKU lookup events:", events);
     const eventDropdown = document.getElementById('eventDropdown');
     eventDropdown.innerHTML = '';
     events.forEach(event => {
