@@ -1,6 +1,8 @@
-// main.js - Updated Eligibility Calculation using Live Event Data
+// main.js - Adapted Integration using Live Robotevents API Data
 
 import { fetchEvents, fetchEventData, fetchAwards } from './api.js';
+
+const BASE_URL = "https://www.robotevents.com/api/v2";
 
 // ---------- Utility Functions ----------
 function computeCutoff(totalCount, threshold) {
@@ -73,18 +75,16 @@ function calculateCombinedEligibility(team, qualifierRankings, skillsRankings, a
     eligible = false;
     reasons.push(`Autonomous Skills Rank: ${autoSkillsRank > 0 ? autoSkillsRank : "Not ranked"} (cutoff: ${autoSkillsCutoff})`);
   }
-
   const precomputed = new PrecomputedValues(qualifierRank, qualifierCutoff, skillsRank, skillsCutoff, skillsData);
   return { eligible, reasons, precomputed };
 }
 
 function calculateSplitEligibility(team, qualifierRankings, skillsRankings, gradeFilter, threshold = 0.5) {
-  // Filter rankings to teams matching gradeFilter.
   const filteredQualifier = qualifierRankings.filter(r => r.team.grade === gradeFilter);
   const filteredSkills = skillsRankings.filter(r => r.team.grade === gradeFilter);
 
   const qualifierCutoff = computeCutoff(filteredQualifier.length, threshold);
-  const skillsCutoff = qualifierCutoff; 
+  const skillsCutoff = qualifierCutoff;
   const sortedQualifier = filteredQualifier.slice().sort((a, b) => a.rank - b.rank);
   const sortedSkills = filteredSkills.slice().sort((a, b) => a.rank - b.rank);
 
@@ -115,7 +115,7 @@ function calculateSplitEligibility(team, qualifierRankings, skillsRankings, grad
   return { eligible, reasons, precomputed };
 }
 
-// ---------- Event Handling & Data Loading ----------
+// ---------- Data Loading & Event Handling ----------
 
 async function loadEvents() {
   try {
@@ -155,8 +155,8 @@ async function lookupEventBySKU(sku) {
       throw new Error("Error looking up event by SKU");
     }
     const data = await response.json();
-    console.log("SKU lookup response:", data);
-    return data.data.data; // Extract the events array from the paginated response
+    console.log("SKU lookup response (raw):", data);
+    return data.data.data; // Extract events array from the paginated response
   } catch (error) {
     console.error("Error during SKU lookup:", error);
     return [];
@@ -165,20 +165,17 @@ async function lookupEventBySKU(sku) {
 
 async function performEligibilityCalculation(eventId) {
   try {
-    // For this example, assume a default division ID of 1.
+    // Assume a default division ID of 1 (you may want to adjust this based on event details).
     const divisionId = 1;
-
-    // Fetch event data and awards.
     const eventData = await fetchEventData(eventId, divisionId);
     const awards = await fetchAwards(eventId);
     console.log("Fetched awards:", awards);
-
-    // Filter awards to those with "All-Around Champion" in the title.
+    
+    // Determine eligibility mode: split if more than one All-Around Champion award
     const allAroundAwards = awards.filter(a => a.title.includes("All-Around Champion"));
     const isSplitMode = allAroundAwards.length > 1;
-    console.log("Is split mode?", isSplitMode);
+    console.log("Eligibility mode split?", isSplitMode);
 
-    // Prepare auto skills rankings.
     const autoSkillsRankings = eventData.skillsRankings
       .filter(r => r.programming_score > 0)
       .map((r, index) => ({ ...r, rank: index + 1 }));
@@ -196,7 +193,6 @@ async function performEligibilityCalculation(eventId) {
         }
       });
 
-      // Show combined results; hide split results.
       document.getElementById('combinedResults').classList.remove('hidden');
       document.getElementById('splitResults').classList.add('hidden');
 
@@ -218,9 +214,7 @@ async function performEligibilityCalculation(eventId) {
         div.innerHTML = `<strong>${item.team.number} - ${item.team.team_name} is NOT eligible</strong><br>${item.reasons.join('<br>')}`;
         ineligibleContainer.appendChild(div);
       });
-
     } else {
-      // Split mode: Separate results for Middle School and High School.
       let eligibleMiddle = [], ineligibleMiddle = [];
       let eligibleHigh = [], ineligibleHigh = [];
 
@@ -242,7 +236,6 @@ async function performEligibilityCalculation(eventId) {
         }
       });
 
-      // Show split results; hide combined results.
       document.getElementById('combinedResults').classList.add('hidden');
       document.getElementById('splitResults').classList.remove('hidden');
 
@@ -280,32 +273,39 @@ async function performEligibilityCalculation(eventId) {
         ineligibleHighContainer.appendChild(div);
       });
     }
-
   } catch (error) {
     console.error("Error performing eligibility calculation:", error);
   }
 }
-
-// ---------- Global Variables ----------
-const BASE_URL = "https://www.robotevents.com/api/v2";
 
 // ---------- Event Listeners ----------
 loadEvents();
 
 document.getElementById('lookupBtn').addEventListener('click', async () => {
   const sku = document.getElementById('skuInput').value.trim();
-  if (!sku) return;
+  if (!sku) {
+    alert("Please enter an SKU.");
+    return;
+  }
+  console.log("SKU entered:", sku);
   try {
     const events = await lookupEventBySKU(sku);
     console.log("SKU lookup events:", events);
     const eventDropdown = document.getElementById('eventDropdown');
     eventDropdown.innerHTML = '';
-    events.forEach(event => {
+    if (events.length === 0) {
       const option = document.createElement('option');
-      option.value = event.id;
-      option.textContent = `${event.name} (SKU: ${event.sku})`;
+      option.value = "";
+      option.textContent = "No events found for that SKU";
       eventDropdown.appendChild(option);
-    });
+    } else {
+      events.forEach(event => {
+        const option = document.createElement('option');
+        option.value = event.id;
+        option.textContent = `${event.name} (SKU: ${event.sku})`;
+        eventDropdown.appendChild(option);
+      });
+    }
   } catch (error) {
     console.error("Error during SKU lookup:", error);
   }

@@ -5,14 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>All-Around Champion Eligibility Checker</title>
   <link rel="manifest" href="manifest.json" />
-  <!-- Link to the compiled Tailwind CSS file (built via Vite/Tailwind) -->
   <link rel="stylesheet" href="/dist/styles.css" />
 </head>
 <body class="bg-gray-50 text-gray-800">
   <header class="bg-blue-700 text-white py-6 shadow">
     <div class="container mx-auto text-center">
       <h1 class="text-3xl font-bold">All-Around Champion Eligibility Checker</h1>
-      <p class="mt-2 text-lg">Select an event to view eligibility results</p>
+      <p class="mt-2 text-lg">Select an event or look up by SKU to view eligibility results</p>
     </div>
   </header>
   
@@ -28,7 +27,7 @@
           </select>
           <p class="mt-2 text-sm text-gray-600">Events from one week ago until future</p>
         </div>
-        <!-- SKU lookup -->
+        <!-- SKU Lookup -->
         <div class="bg-white p-6 rounded-lg shadow border">
           <label for="skuInput" class="block text-lg font-semibold mb-2">Or Lookup an Event by SKU</label>
           <div class="flex">
@@ -42,7 +41,7 @@
       </div>
     </section>
     
-    <!-- Combined Results Section (for events with a single award) -->
+    <!-- Combined Results Section (one award) -->
     <section id="combinedResults">
       <div class="mb-8">
         <h2 class="text-2xl font-bold mb-4">Eligible Teams</h2>
@@ -54,7 +53,7 @@
       </div>
     </section>
     
-    <!-- Split Results Section (for events with separate Middle School and High School awards) -->
+    <!-- Split Results Section (separate Middle School / High School lists) -->
     <section id="splitResults" class="hidden">
       <div id="middleSchoolResults" class="mb-8">
         <h2 class="text-2xl font-bold mb-4">Middle School Eligible Teams</h2>
@@ -71,10 +70,8 @@
     </section>
   </main>
   
-  <!-- Load main.js -->
   <script type="module" src="main.js"></script>
   
-  <!-- Service Worker Registration -->
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js')
