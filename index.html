@@ -1,83 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>All-Around Champion Eligibility Checker</title>
-  <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="/dist/styles.css" />
-</head>
-<body class="bg-gray-50 text-gray-800">
-  <header class="bg-blue-700 text-white py-6 shadow">
-    <div class="container mx-auto text-center">
-      <h1 class="text-3xl font-bold">All-Around Champion Eligibility Checker</h1>
-      <p class="mt-2 text-lg">Select an event or look up by SKU to view eligibility results</p>
-    </div>
-  </header>
-  
-  <main class="container mx-auto my-8 px-4">
-    <!-- Event Lookup Section -->
-    <section class="mb-8">
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <!-- Dropdown for events -->
-        <div class="bg-white p-6 rounded-lg shadow border">
-          <label for="eventDropdown" class="block text-lg font-semibold mb-2">Select an Event</label>
-          <select id="eventDropdown" class="w-full p-3 border rounded">
-            <option value="">Loading events...</option>
-          </select>
-          <p class="mt-2 text-sm text-gray-600">Events from one week ago until future</p>
-        </div>
-        <!-- SKU Lookup -->
-        <div class="bg-white p-6 rounded-lg shadow border">
-          <label for="skuInput" class="block text-lg font-semibold mb-2">Or Lookup an Event by SKU</label>
-          <div class="flex">
-            <input type="text" id="skuInput" placeholder="Enter Event SKU" class="flex-grow p-3 border rounded-l" />
-            <button id="lookupBtn" class="bg-blue-600 text-white px-4 rounded-r hover:bg-blue-700">Lookup</button>
-          </div>
-        </div>
-      </div>
-      <div class="text-center mt-6">
-        <button id="calculateBtn" class="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded font-semibold">Load Eligibility</button>
-      </div>
-    </section>
-    
-    <!-- Combined Results Section (one award) -->
-    <section id="combinedResults">
-      <div class="mb-8">
-        <h2 class="text-2xl font-bold mb-4">Eligible Teams</h2>
-        <div id="eligibleTeams" class="space-y-4"></div>
-      </div>
-      <div>
-        <h2 class="text-2xl font-bold mb-4">Ineligible Teams</h2>
-        <div id="ineligibleTeams" class="space-y-4"></div>
-      </div>
-    </section>
-    
-    <!-- Split Results Section (separate Middle School / High School lists) -->
-    <section id="splitResults" class="hidden">
-      <div id="middleSchoolResults" class="mb-8">
-        <h2 class="text-2xl font-bold mb-4">Middle School Eligible Teams</h2>
-        <div id="eligibleTeamsMiddle" class="space-y-4"></div>
-        <h2 class="text-2xl font-bold mb-4">Middle School Ineligible Teams</h2>
-        <div id="ineligibleTeamsMiddle" class="space-y-4"></div>
-      </div>
-      <div id="highSchoolResults">
-        <h2 class="text-2xl font-bold mb-4">High School Eligible Teams</h2>
-        <div id="eligibleTeamsHigh" class="space-y-4"></div>
-        <h2 class="text-2xl font-bold mb-4">High School Ineligible Teams</h2>
-        <div id="ineligibleTeamsHigh" class="space-y-4"></div>
-      </div>
-    </section>
-  </main>
-  
-  <script type="module" src="main.js"></script>
-  
-  <script>
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js')
-        .then(reg => console.log('Service Worker registered:', reg.scope))
-        .catch(err => console.error('Service Worker registration failed:', err));
-    }
-  </script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Excellence Eligibility</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
