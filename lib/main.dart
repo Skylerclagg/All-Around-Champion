@@ -21,6 +21,19 @@ class AllAroundApp extends StatelessWidget {
 // Models
 // ---------------------------------------------
 
+class Ranking {
+  final int teamId;
+  final int rank;
+
+  Ranking({required this.teamId, required this.rank});
+
+  factory Ranking.fromJson(Map<String, dynamic> j) => Ranking(
+        teamId: (j['team'] as Map<String, dynamic>)['id'] as int,
+        rank: j['rank'] as int? ?? -1,
+      );
+}
+
+
 class EventInfo {
   final int id;
   final String sku;
@@ -187,14 +200,40 @@ class RobotEventsApiService {
   Future<List<Award>> fetchAwards(int eId) =>
       _getList('/events/$eId/awards?per_page=250', Award.fromJson);
 
-  Future<List<Map<String, dynamic>>> fetchRankings(int eId, int divId) =>
-      _getList(
-        '/events/$eId/divisions/$divId/rankings?per_page=250',
-        (j) => {
-          'teamId': (j['team'] as Map<String, dynamic>)['id'] as int,
-          'rank': j['rank'] as int? ?? -1,
-        },
-      );
+  Future<List<Ranking>> fetchRankings(int eId, int divId) async {
+  List<Ranking> all = [];
+  int page = 1;
+
+  while (true) {
+    final uri = Uri.parse(
+      '$_base/events/$eId/divisions/$divId/rankings?page=$page&per_page=250',
+    );
+    final resp = await http.get(uri, headers: {
+      'Authorization': 'Bearer $_token',
+      'Content-Type': 'application/json',
+    });
+
+    if (resp.statusCode != 200) {
+      print('❌ Rankings API error (${resp.statusCode}): ${resp.body}');
+      throw Exception('Failed to fetch rankings');
+    }
+
+    final json = jsonDecode(resp.body) as Map<String, dynamic>;
+    final data = json['data'] as List<dynamic>;
+
+    if (data.isEmpty) break;
+
+    all.addAll(data.map((e) => Ranking.fromJson(e as Map<String, dynamic>)));
+    if (data.length < 250) break;
+
+    print('📄 Fetched page $page with ${data.length} rankings');
+    page++;
+  }
+
+  print('✅ Total rankings fetched: ${all.length}');
+  return all;
+}
+
 }
 
 // ---------------------------------------------
@@ -219,7 +258,7 @@ class _EligibilityPageState extends State<EligibilityPage> {
   Division? selectedDivision;
 
   List<Team> teams = [];
-  List<Map<String, dynamic>> rawRankings = [];
+  List<Ranking> rawRankings = [];
   List<RawSkill> rawSkills = [];
   List<Award> awards = [];
 
@@ -247,15 +286,20 @@ class _EligibilityPageState extends State<EligibilityPage> {
   }
 
   Future<void> _loadEvents() async {
-    try {
-      final all = await api.fetchEvents();
-      events = all.where((e) => e.start.isAfter(DateTime.now())).toList();
-      setState(() {});
-    } catch (e, st) {
-      print('❌ fetchEvents: $e\n$st');
-      setState(() => error = 'Failed to load events');
-    }
+  try {
+    final all = await api.fetchEvents();
+    final oneWeekAgo = DateTime.now().subtract(const Duration(days: 7));
+
+    // Filter: Only events that start on or after 1 week ago
+    events = all.where((e) => e.start.isAfter(oneWeekAgo)).toList();
+
+    setState(() {});
+  } catch (e, st) {
+    print('❌ fetchEvents: $e\n$st');
+    setState(() => error = 'Failed to load events');
   }
+}
+
 
   Future<void> _loadAll(int eId) async {
     setState(() {
@@ -285,6 +329,21 @@ class _EligibilityPageState extends State<EligibilityPage> {
     } finally {
       setState(() => loading = false);
     }
+    final rankingTeamIds = rawRankings.map((r) => r.teamId).toSet();
+final teamIds = teams.map((t) => t.id).toSet();
+
+final missingFromTeams = rankingTeamIds.difference(teamIds);
+final missingFromRankings = teamIds.difference(rankingTeamIds);
+
+print('🧮 Total teams: ${teams.length}');
+print('📈 Total rankings: ${rawRankings.length}');
+print('❗ Teams in rankings but NOT in teams list: ${missingFromTeams.length}');
+print('❗ Teams in teams list but NOT in rankings list: ${missingFromRankings.length}');
+
+for (final tid in missingFromTeams) {
+  print('  ⚠️ Missing team object for ranking teamId: $tid');
+}
+
   }
 
   bool get isCombined {
@@ -296,135 +355,122 @@ class _EligibilityPageState extends State<EligibilityPage> {
 
   double get threshold => 0.5;
 
-  List<TeamSkills> get tableRecords {
-    final skillMap = <int, RawSkill>{};
-    for (var s in rawSkills) {
-      if (skillMap.containsKey(s.teamId)) {
-        final ex = skillMap[s.teamId]!;
-        final bestRank = ex.rank < 0 || (s.rank >= 0 && s.rank < ex.rank)
-            ? s.rank
-            : ex.rank;
-        skillMap[s.teamId] = RawSkill(
-          teamId: s.teamId,
-          rank: bestRank,
-          programmingScore: ex.programmingScore + s.programmingScore,
-          driverScore: ex.driverScore + s.driverScore,
-        );
-      } else {
-        skillMap[s.teamId] = s;
-      }
+List<TeamSkills> get tableRecords {
+  final skillMap = <int, RawSkill>{};
+  for (var s in rawSkills) {
+    if (skillMap.containsKey(s.teamId)) {
+      final ex = skillMap[s.teamId]!;
+      final bestRank = ex.rank < 0 || (s.rank >= 0 && s.rank < ex.rank)
+          ? s.rank
+          : ex.rank;
+      skillMap[s.teamId] = RawSkill(
+        teamId: s.teamId,
+        rank: bestRank,
+        programmingScore: ex.programmingScore + s.programmingScore,
+        driverScore: ex.driverScore + s.driverScore,
+      );
+    } else {
+      skillMap[s.teamId] = s;
     }
-
-    return teams.map((t) {
-      if (isCombined) {
-        final cut = rawRankings.isEmpty
-            ? 0
-            : (rawRankings.length * threshold)
-                .ceil()
-                .clamp(1, rawRankings.length);
-        final r = rawRankings
-                .firstWhere((x) => x['teamId'] == t.id,
-                    orElse: () => {'rank': -1})['rank']
-            as int;
-        final s = skillMap[t.id] ??
-            RawSkill(teamId: t.id, rank: -1, programmingScore: 0, driverScore: 0);
-
-        final inRank = r > 0 && r <= cut;
-        final inSkill = s.rank > 0 && s.rank <= cut;
-        final hasProg = s.programmingScore > 0;
-        final hasDrv = s.driverScore > 0;
-        final eligible = inRank && inSkill && hasProg && hasDrv;
-
-        return TeamSkills(
-          team: t,
-          qualifierRank: inRank
-              ? rawRankings.indexWhere((x) => x['teamId'] == t.id) + 1
-              : -1,
-          skillsRank: inSkill
-              ? (skillMap.values.toList()
-                    ..sort((a, b) => a.rank.compareTo(b.rank)))
-                  .indexWhere((sr) => sr.teamId == t.id) +
-                  1
-              : -1,
-          programmingScore: s.programmingScore,
-          driverScore: s.driverScore,
-          eligible: eligible,
-          inRank: inRank,
-          inSkill: inSkill,
-        );
-      } else {
-        final grade = t.grade.toLowerCase();
-
-        final gradeQR = rawRankings.where((qr) {
-          final tid = qr['teamId'] as int;
-          final tm = teams.firstWhere((tt) => tt.id == tid);
-          return tm.grade.toLowerCase() == grade;
-        }).toList();
-        final qualifierCutoff = max(1, (gradeQR.length * threshold).ceil());
-        gradeQR.sort((a, b) =>
-            (a['rank'] as int).compareTo(b['rank'] as int));
-        final inRankIds = gradeQR
-            .take(qualifierCutoff)
-            .map((e) => e['teamId'] as int)
-            .toSet();
-
-        final gradeSkills = skillMap.values
-            .where((sr) {
-              final tm = teams.firstWhere((tt) => tt.id == sr.teamId);
-              return tm.grade.toLowerCase() == grade;
-            })
-            .toList()
-          ..sort((a, b) => a.rank.compareTo(b.rank));
-        final skillsCutoff = qualifierCutoff;
-        final skillIndex =
-            gradeSkills.indexWhere((sr) => sr.teamId == t.id);
-        final skillsRankComputed =
-            skillIndex >= 0 ? skillIndex + 1 : -1;
-
-        final sRaw = skillMap[t.id] ??
-            RawSkill(teamId: t.id, rank: -1, programmingScore: 0, driverScore: 0);
-
-        final hasProg = sRaw.programmingScore > 0;
-        final inRank = inRankIds.contains(t.id);
-        final inSkill = skillsRankComputed > 0 &&
-            skillsRankComputed <= skillsCutoff;
-        final eligible = inRank && hasProg && inSkill;
-
-        final qualifierRankComputed =
-            inRank ? gradeQR.indexWhere((e) => e['teamId'] == t.id) + 1 : -1;
-
-        return TeamSkills(
-          team: t,
-          qualifierRank: qualifierRankComputed,
-          skillsRank: skillsRankComputed,
-          programmingScore: sRaw.programmingScore,
-          driverScore: sRaw.driverScore,
-          eligible: eligible,
-          inRank: inRank,
-          inSkill: inSkill,
-        );
-      }
-    }).toList();
   }
+
+  final teamMap = {for (var t in teams) t.id: t};
+  final isMSHS = !isCombined;
+
+  return teamMap.values.map((t) {
+    final s = skillMap[t.id] ??
+        RawSkill(teamId: t.id, rank: -1, programmingScore: 0, driverScore: 0);
+
+    final rEntry = rawRankings.firstWhere(
+      (r) => r.teamId == t.id,
+      orElse: () => Ranking(teamId: t.id, rank: -1),
+    );
+
+    if (!isMSHS) {
+      final cut = rawRankings.isEmpty
+          ? 0
+          : (rawRankings.length * threshold).ceil().clamp(1, rawRankings.length);
+      final inRank = rEntry.rank > 0 && rEntry.rank <= cut;
+
+      final sortedSkills = skillMap.values.toList()
+        ..sort((a, b) => a.rank.compareTo(b.rank));
+      final skillIndex = sortedSkills.indexWhere((sr) => sr.teamId == t.id);
+      final skillsRankComputed = skillIndex >= 0 ? skillIndex + 1 : -1;
+
+      final inSkill = s.rank > 0 && s.rank <= cut;
+      final hasProg = s.programmingScore > 0;
+      final hasDrv = s.driverScore > 0;
+      final eligible = inRank && inSkill && hasProg && hasDrv;
+
+      return TeamSkills(
+        team: t,
+        qualifierRank: rEntry.rank > 0 ? rEntry.rank : -1,
+        skillsRank: skillsRankComputed,
+        programmingScore: s.programmingScore,
+        driverScore: s.driverScore,
+        eligible: eligible,
+        inRank: inRank,
+        inSkill: inSkill,
+      );
+    } else {
+      final grade = t.grade.toLowerCase();
+      final gradeRankings = rawRankings.where((r) {
+        final tm = teamMap[r.teamId];
+        return tm != null && tm.grade.toLowerCase() == grade;
+      }).toList()
+        ..sort((a, b) => a.rank.compareTo(b.rank));
+
+      final cutoff = max(1, (gradeRankings.length * threshold).ceil());
+      final inRankIds = gradeRankings
+          .take(cutoff)
+          .map((r) => r.teamId)
+          .toSet();
+
+      final gradeSkills = skillMap.values.where((s) {
+        final tm = teamMap[s.teamId];
+        return tm != null && tm.grade.toLowerCase() == grade;
+      }).toList()
+        ..sort((a, b) => a.rank.compareTo(b.rank));
+
+      final skillIndex = gradeSkills.indexWhere((sr) => sr.teamId == t.id);
+      final skillsRankComputed = skillIndex >= 0 ? skillIndex + 1 : -1;
+
+      final hasProg = s.programmingScore > 0;
+      final inRank = inRankIds.contains(t.id);
+      final inSkill = skillsRankComputed > 0 && skillsRankComputed <= cutoff;
+      final eligible = inRank && hasProg && inSkill;
+
+      return TeamSkills(
+        team: t,
+        qualifierRank: rEntry.rank > 0 ? rEntry.rank : -1,
+        skillsRank: skillsRankComputed,
+        programmingScore: s.programmingScore,
+        driverScore: s.driverScore,
+        eligible: eligible,
+        inRank: inRank,
+        inSkill: inSkill,
+      );
+    }
+  }).toList();
+}
 
   String _fmt(int r) => r < 0 ? 'No Data' : '#$r';
 
   Widget _buildSummary(String? grade) {
     final cutoff = isCombined
-        ? rawRankings.isEmpty
-            ? 0
-            : (rawRankings.length * threshold)
-                .ceil()
-                .clamp(1, rawRankings.length)
-        : () {
-            final g = grade!.toLowerCase();
-            final cnt = rawRankings.where((qr) {
-              final tm =
-                  teams.firstWhere((tt) => tt.id == qr['teamId'] as int);
-              return tm.grade.toLowerCase() == g;
-            }).length;
-            return max(1, (cnt * threshold).ceil());
-          }();
+      ? rawRankings.isEmpty
+          ? 0
+          : (rawRankings.length * threshold)
+              .ceil()
+              .clamp(1, rawRankings.length)
+      : () {
+          final g = grade!.toLowerCase();
+          final cnt = rawRankings.where((qr) {
+            final tm = teams.firstWhere((tt) => tt.id == qr.teamId);
+            return tm.grade.toLowerCase() == g;
+          }).length;
+          return max(1, (cnt * threshold).ceil());
+        }();
 
     final eligibleNums = (isCombined
             ? tableRecords
